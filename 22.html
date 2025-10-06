@@ -1,0 +1,294 @@
+ 
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>未命名測驗</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #37474F; color: #ECEFF1; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #263238; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+        .question { margin-bottom: 30px; padding: 20px; border: 1px solid #455A64; border-radius: 6px; }
+        .q-text { font-size: 1.2em; font-weight: bold; margin-bottom: 15px; }
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .option-btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 4px; background: #546E7A; color: white; cursor: pointer; text-align: left; transition: background 0.2s; }
+        .option-btn:hover:not(:disabled) { background: #78909C; }
+        .feedback { font-weight: bold; margin-top: 15px; padding: 10px; border-radius: 4px; }
+        .correct { color: #4CAF50; background-color: #384E41; }
+        .wrong { color: #E53935; background-color: #4E3E40; }
+        .image-placeholder { color: #90CAF9; font-size: 0.9em; } 
+        #open-answer { padding: 10px; width: 90%; max-width: 300px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #455A64; background: #546E7A; color: white; }
+        .disabled-btn { opacity: 0.6; cursor: not-allowed; }
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; } 
+        }
+        .question img { max-width: 100%; height: auto; display: block; margin: 0 auto 15px; border-radius: 4px; border: 1px solid #455A64; }
+        
+        /* 媒體查詢：列印模式 (關鍵：隱藏按鈕、確保白底黑字) */
+        @media print { 
+            body { background-color: white !important; color: black !important; padding: 0 !important; }
+            .container { box-shadow: none; border: none; background: white !important; color: black !important; padding: 10px !important; max-width: none; }
+            .question { border: 1px solid #ccc; background-color: #f9f9f9 !important; page-break-inside: avoid; }
+            .q-text { color: black !important; }
+            .feedback { border: 1px solid #ccc; }
+            /* 讓答案/解析在列印時顯示為黑色，確保可讀性 */
+            .correct, .wrong { background-color: #e0e0e0 !important; color: black !important; }
+            /* 隱藏作答區和分數按鈕 */
+            .options-grid, #open-answer, #score-container button, #progress-display, #student-info-form { display: none !important; } 
+            
+            /* 顯示正確答案的標籤 */
+            .correct-answer-label { display: block !important; color: #000; font-weight: bold; margin-top: 5px; }
+        }
+        #progress-display { font-size: 1.1em; color: #BBBBBB; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>未命名測驗</h1>
+        
+        <div id="student-info-form" style="margin-bottom: 20px; padding: 20px; border: 1px solid #FFA000; border-radius: 4px;">
+            <p style="color: #FFA000; font-weight: bold;">請先輸入考生資訊：</p>
+            <label for="class-id">班級/座號:</label>
+            <input type="text" id="class-id" placeholder="例如: 101-05" style="padding: 5px; margin-bottom: 10px; width: 150px; background: #546E7A; color: white; border: 1px solid #455A64;">
+            <label for="student-name">考生姓名:</label>
+            <input type="text" id="student-name" placeholder="例如: 王小明" style="padding: 5px; margin-bottom: 10px; width: 150px; background: #546E7A; color: white; border: 1px solid #455A64;">
+            <button onclick="startQuizWeb()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">開始測驗</button>
+        </div>
+        
+        <div id="progress-display" style="display: none;"></div>
+        <div id="quiz-container">請輸入考生資訊後開始測驗...</div>
+        <div id="score-container" style="margin-top: 30px; font-size: 1.1em; color: #BBBBBB;"></div>
+    </div>
+
+    <script>
+        const quizData = JSON.parse('[{"type": 1, "text": "Python 是一種解釋型語言。", "answer": "O", "options": {}, "image": "example_image.png"}, {"type": 2, "text": "哪個是正確選項？", "answer": "E", "options": {"A": "選項一", "B": "選項二", "E": "選項五"}, "image": "example_image2.jpg"}, {"type": 3, "text": "今天的日期是？", "answer": "10月6日", "options": {}, "image": null}, {"type": 1, "text": "請根據圖片作答：1.jpg", "answer": "O", "options": {}, "image": "1.jpg"}, {"type": 2, "text": "請根據圖片作答：3.jpg", "answer": "E", "options": {"A": "選項A", "B": "選項B", "C": "選項C", "D": "選項D", "E": "選項E"}, "image": "3.jpg"}, {"type": 3, "text": "請根據圖片作答：4.jpg", "answer": "HH", "options": {}, "image": "4.jpg"}, {"type": 1, "text": "請根據圖片作答：2.jpg", "answer": "X", "options": {}, "image": "2.jpg"}]'); 
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let answeredCount = 0;
+        const container = document.getElementById('quiz-container');
+        const scoreContainer = document.getElementById('score-container');
+        const progressDisplay = document.getElementById('progress-display');
+        const infoForm = document.getElementById('student-info-form');
+        
+        let studentClassId = '';
+        let studentName = '';
+        
+        const imagePathPrefix = 'images/'; 
+        
+        const answeredQuestions = [];
+
+        function startQuizWeb() {
+            studentClassId = document.getElementById('class-id').value.trim();
+            studentName = document.getElementById('student-name').value.trim();
+            
+            if (!studentClassId || !studentName) {
+                alert("請填寫班級/座號和考生姓名！");
+                return;
+            }
+
+            infoForm.style.display = 'none';
+            progressDisplay.style.display = 'block';
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const isRandom = urlParams.get('mode') === 'random';
+            
+            if (quizData && quizData.length > 0) {
+                if (isRandom) {
+                    quizData.sort(() => Math.random() - 0.5);
+                }
+                showQuestion(currentQuestionIndex);
+            } else {
+                container.innerHTML = '<h2 style="color:orange;">題目數據載入失敗。</h2>';
+            }
+        }
+
+        function showQuestion(index) {
+            if (index >= quizData.length) {
+                showResults();
+                return;
+            }
+            
+            const q = quizData[index];
+            let html = `<div class="question" id="q-${index}">`;
+            html += `<div class="q-text">第 ${index + 1} 題: ${q.text}</div>`;
+            
+            if (q.image) {
+                html += `<img src="${imagePathPrefix}${q.image}" alt="題目圖片" onerror="this.outerHTML='<p class=\'image-placeholder\'>圖片載入失敗 (檔案: ${imagePathPrefix}${q.image} - 請確認檔案是否在 images 資料夾內)</p>'">`;
+            }
+
+            html += `<div class="options-grid" id="options-${index}">`;
+            
+            if (q.type === 1) { // 是非題 (O/X)
+                html += `<button class="option-btn" data-answer="O" data-index="${index}" style="grid-column: span 1;">⭕ 是</button>`;
+                html += `<button class="option-btn" data-answer="X" data-index="${index}" style="grid-column: span 1;">❌ 非</button>`;
+            } else if (q.type === 2) { // 選擇題 (A-E)
+                const optionKeys = ['A', 'B', 'C', 'D', 'E'];
+                optionKeys.forEach(key => {
+                    if(q.options[key]) {
+                        html += `<button class="option-btn" data-answer="${key}" data-index="${index}">${key}. ${q.options[key]}</button>`;
+                    }
+                });
+            } else if (q.type === 3) { // 開放式
+                html += `<div style="grid-column: span 2;">`; 
+                html += `<input type="text" id="open-answer-${index}" maxlength="10" placeholder="請輸入答案 (最多10字)" style="text-transform: uppercase;">`;
+                html += `<button class="option-btn" data-index="${index}" onclick="checkOpenAnswer(event)" style="background: #4CAF50;">確認送出</button>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+            html += `<div class="feedback" id="feedback-${index}"></div>`;
+            html += `<div class="correct-answer-label" style="display:none; color: #4CAF50;">✅ 正確答案：${q.answer}</div>`; // 供列印時顯示
+            html += `</div>`;
+            container.innerHTML = html;
+            
+            if (q.type === 1 || q.type === 2) {
+                document.querySelectorAll(`#options-${index} .option-btn`).forEach(btn => {
+                    if (!btn.getAttribute('onclick')) {
+                        btn.onclick = (e) => checkMultipleChoice(index, e.target);
+                    }
+                });
+            }
+            updateScoreDisplay();
+        }
+
+        function disableAllButtons(index) {
+            const optionsArea = document.getElementById(`options-${index}`);
+            optionsArea.querySelectorAll('.option-btn').forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('disabled-btn');
+            });
+        }
+
+        function checkMultipleChoice(index, button) {
+            const q = quizData[index];
+            const userAnswer = button.getAttribute('data-answer');
+            const feedbackElement = document.getElementById('feedback-' + index);
+            const isCorrect = userAnswer === q.answer;
+            answeredCount++;
+
+            answeredQuestions[index] = {
+                ...q,
+                userAnswer: userAnswer,
+                isCorrect: isCorrect,
+                questionIndex: index
+            };
+
+            if (isCorrect) {
+                feedbackElement.innerHTML = '✅ 正確！';
+                feedbackElement.classList.add('correct');
+                score++;
+                button.style.backgroundColor = '#4CAF50';
+                setTimeout(showNextQuestion, 1000);
+            } else {
+                feedbackElement.innerHTML = `❌ 錯誤！您選了 ${userAnswer}，正確答案是 ${q.answer}`;
+                feedbackElement.classList.add('wrong');
+                button.style.backgroundColor = '#E53935';
+                document.querySelectorAll(`#options-${index} .option-btn`).forEach(btn => {
+                    if (btn.getAttribute('data-answer') === q.answer) {
+                        btn.style.border = '3px solid #FFA000';
+                        btn.style.backgroundColor = '#FFA000'; 
+                    }
+                });
+                setTimeout(showNextQuestion, 2000);
+            }
+            disableAllButtons(index);
+            updateScoreDisplay();
+        }
+
+        function checkOpenAnswer(event) {
+            const index = parseInt(event.target.getAttribute('data-index'));
+            const q = quizData[index];
+            const inputElement = document.getElementById('open-answer-' + index);
+            const userAnswer = inputElement.value.toUpperCase().trim();
+            const feedbackElement = document.getElementById('feedback-' + index);
+            const isCorrect = userAnswer === q.answer;
+            answeredCount++;
+            
+            answeredQuestions[index] = {
+                ...q,
+                userAnswer: userAnswer,
+                isCorrect: isCorrect,
+                questionIndex: index
+            };
+
+
+            if (isCorrect) {
+                feedbackElement.innerHTML = '✅ 正確！';
+                feedbackElement.classList.add('correct');
+                score++;
+            } else {
+                feedbackElement.innerHTML = `❌ 錯誤！您寫了 ${userAnswer}，正確答案是 ${q.answer}`;
+                feedbackElement.classList.add('wrong');
+            }
+
+            inputElement.disabled = true;
+            disableAllButtons(index);
+            updateScoreDisplay();
+            
+            const nextButton = document.createElement('button');
+            nextButton.textContent = '下一題 >>';
+            nextButton.style.cssText = "padding: 10px 20px; background: #1976D2; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px; font-weight: bold; width: 100%;";
+            nextButton.onclick = showNextQuestion;
+            document.getElementById(`q-${index}`).appendChild(nextButton);
+        }
+
+        function showNextQuestion() {
+            currentQuestionIndex++;
+            showQuestion(currentQuestionIndex);
+        }
+
+        function updateScoreDisplay() {
+            const totalQ = quizData.length;
+            const finalScore = totalQ > 0 ? ((score / totalQ) * 100).toFixed(1) : 0;
+            const correctQ = score;
+            const wrongQ = answeredCount - correctQ;
+            progressDisplay.innerHTML = `進度: ${answeredCount}/${totalQ} 題 | 正確: ${correctQ} | 錯誤: ${wrongQ} | 目前得分: ${finalScore}/100`;
+        }
+
+        function showResults() {
+            const finalScore = quizData.length > 0 ? ((score / quizData.length) * 100).toFixed(1) : 0;
+            const wrongCount = answeredQuestions.filter(q => q && !q.isCorrect).length;
+            
+            let resultHTML = `<h2 style="color: #FFA000;">${document.querySelector('h1').textContent}</h2>`;
+            resultHTML += `<p style="font-weight: bold; margin-bottom: 20px;">考生: ${studentClassId} ${studentName}</p>`;
+            resultHTML += `<h2>測驗完成！</h2>
+                           <p>總題數：${quizData.length} 題 | 正確：${score} 題 | 錯誤：${wrongCount} 題</p>`;
+            
+            if (wrongCount > 0) {
+                resultHTML += `<h3 style="color: #E53935; margin-top: 20px;">❌ 錯題回顧與解析 ❌</h3>`;
+                
+                answeredQuestions.forEach((q, index) => {
+                    if (q && !q.isCorrect) {
+                        const imgTag = q.image ? `<img src="${imagePathPrefix}${q.image}" alt="題目圖片">` : '';
+                        resultHTML += `<div class="question wrong">
+                                         <div class="q-text">【錯題 ${index + 1}】 ${q.text}</div>
+                                         ${imgTag}
+                                         <div class="feedback wrong">
+                                            您的答案: ${q.userAnswer}<br>
+                                            ✅ 正確答案: ${q.answer}
+                                         </div>
+                                       </div>`;
+                    }
+                });
+                
+                resultHTML += `<p style="color: #FFA000; margin-top: 20px; font-weight: bold;">請使用下方的按鈕列印此頁面，即可儲存錯題解析複習 PDF！</p>`;
+            }
+
+            container.innerHTML = resultHTML;
+            
+            scoreContainer.innerHTML = `<h3 style="color: #4CAF50;">🎉 最終得分: ${finalScore} / 100</h3> 
+                                        <button onclick="window.print()" style="padding: 15px 30px; background: #D32F2F; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 15px; font-weight: bold; font-size: 1.2em;">
+                                            ⬇️ 列印錯題複習 / 另存 PDF 下載
+                                        </button>`;
+            
+            progressDisplay.style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('mode') === 'random') {
+                 document.getElementById('student-info-form').querySelector('p').textContent = "【隨機模式】請先輸入考生資訊：";
+            }
+        });
+    </script>
+</body>
+</html>
